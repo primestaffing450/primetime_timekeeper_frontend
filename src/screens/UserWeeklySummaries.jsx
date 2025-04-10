@@ -103,14 +103,7 @@ const UserWeeklySummaries = ({ setIsLoggedIn }) => {
                         <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-6">
                             <div>
                                 <h1 className="text-2xl font-bold text-gray-800">
-                                    {new Date(data?.week_data?.week_start).toLocaleDateString('en-US', {
-                                        month: 'long',
-                                        day: 'numeric'
-                                    })} - {new Date(data?.week_data?.week_end).toLocaleDateString('en-US', {
-                                        month: 'long',
-                                        day: 'numeric',
-                                        year: 'numeric'
-                                    })}
+                                    {new Date(data?.week_data?.week_start).toISOString().slice(0, 10)} - {new Date(data?.week_data?.week_end).toISOString().slice(0, 10)}
                                 </h1>
                                 <p className="text-gray-600">Weekly Timesheet Details</p>
                             </div>
@@ -135,11 +128,7 @@ const UserWeeklySummaries = ({ setIsLoggedIn }) => {
                                     <div className={`px-4 py-3 ${index % 2 === 0 ? 'bg-gray-50' : 'bg-white'
                                         }`}>
                                         <h3 className="font-medium text-gray-800">
-                                            {new Date(day.date).toLocaleDateString('en-US', {
-                                                weekday: 'long',
-                                                month: 'short',
-                                                day: 'numeric'
-                                            })}
+                                            {new Date(day.date).toISOString().slice(0, 10)}
                                         </h3>
                                     </div>
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4">

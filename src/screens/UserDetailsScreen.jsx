@@ -62,8 +62,8 @@ const UserDetailScreen = ({ setIsLoggedIn }) => {
                 <div className="flex justify-between items-start">
                     <div>
                         <h3 className="text-lg font-semibold text-gray-800">
-                            {new Date(week.week_start).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} -
-                            {new Date(week.week_end).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                            {new Date(week.week_start).toISOString().slice(0, 10)} -
+                            {new Date(week.week_end).toISOString().slice(0, 10)}
                         </h3>
                     </div>
                     <button
