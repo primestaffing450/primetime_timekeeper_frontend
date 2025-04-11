@@ -41,6 +41,43 @@ const api = {
             return { success: false, message: error?.response?.data?.detail };
         }
     },
+    forgotPassword: async (email) => {
+        try {
+            const payload = {
+                email,
+            };
+            const response = await axios.post(`${API_URL}/auth/forgot-password`, payload, {
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                },
+            });
+            return { success: true, data: response?.data };
+        } catch (error) {
+            console.log('Register Error:', error?.response?.data?.detail);
+            return { success: false, message: error?.response?.data?.detail };
+        }
+    },
+    resetPassword: async (password, token,confirm_password) => {
+        try {
+            const payload = {
+                // email,
+                password,
+                token,
+                confirm_password
+            };
+            const response = await axios.post(`${API_URL}/auth/reset-password`, payload, {
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                },
+            });
+            return { success: true, data: response?.data };
+        } catch (error) {
+            console.log('Reset Password Error:', error?.response?.data?.detail);
+            return { success: false, message: error?.response?.data?.detail };
+        }
+    },
     getUsers: async (accessToken) => {
         try {
             const response = await axios.get(`${API_URL}/manager/users`,

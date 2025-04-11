@@ -1,23 +1,25 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import api from '../api';
 import Logo from "../assets/Logo.png";
 import { FaEye, FaEyeSlash } from 'react-icons/fa'; // Import eye icons
 
-const RegisterScreen = () => {
-    const [fullName, setFullName] = useState('');
-    const [username, setUsername] = useState('');
-    const [email, setEmail] = useState('');
+const ResetPassword = () => {
+    // const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
     const [loading, setLoading] = useState(false);
     const [showPassword, setShowPassword] = useState(false); // For password field
     const [showConfirmPassword, setShowConfirmPassword] = useState(false); // For confirm password field
     const navigate = useNavigate();
+    const location = useLocation();
+    const searchParams = new URLSearchParams(location.search);
+    const token = searchParams.get('token');
+    console.log(token)
 
     const validateInputs = () => {
-        if (!fullName || !username || !email || !password || !confirmPassword) {
+        if (!password || !confirmPassword) {
             toast.error('All fields are required!', {
                 position: "top-center",
                 autoClose: 3000,
@@ -25,13 +27,13 @@ const RegisterScreen = () => {
             return false;
         }
 
-        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-            toast.error('Invalid email format!', {
-                position: "top-center",
-                autoClose: 3000,
-            });
-            return false;
-        }
+        // if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        //     toast.error('Invalid email format!', {
+        //         position: "top-center",
+        //         autoClose: 3000,
+        //     });
+        //     return false;
+        // }
 
         if (password.length < 8) {
             toast.error('Password must be at least 8 characters!', {
@@ -52,27 +54,24 @@ const RegisterScreen = () => {
         return true;
     };
 
-    const handleRegister = async (e) => {
+    const handleForgotPassword = async (e) => {
         e.preventDefault();
         if (!validateInputs()) return;
         setLoading(true);
-        const formattedEmail = email.toLowerCase().trim();
-        const formattedUsername = username.toLowerCase().trim();
+        // const formattedEmail = email.toLowerCase().trim();
         try {
-            const response = await api.register(formattedUsername, formattedEmail, password, fullName);
+            const response = await api.resetPassword(password, token,confirmPassword);
             if (response.success) {
-                toast.success('Registration Successful! Please login.', {
+                toast.success('Reset Password Successful! Please login.', {
                     position: "top-center",
                     autoClose: 2000,
                     onClose: () => navigate('/login')
                 });
-                setFullName('');
-                setUsername('');
-                setEmail('');
+                // setEmail('');
                 setPassword('');
                 setConfirmPassword('');
             } else {
-                toast.error(response.message || 'Registration failed', {
+                toast.error(response.message || 'Reset Password failed', {
                     position: "top-center",
                     autoClose: 3000,
                 });
@@ -101,38 +100,10 @@ const RegisterScreen = () => {
                 <div className="flex justify-center">
                     <img src={Logo} alt="Logo" className="h-16 mb-4" />
                 </div>
-                <h2 className="text-2xl font-bold text-center text-gray-800">Create Account</h2>
+                <h2 className="text-2xl font-bold text-center text-gray-800">Reset Password</h2>
 
-                <form onSubmit={handleRegister} className="space-y-4">
-                    <div>
-                        <label htmlFor="fullName" className="block text-sm font-medium text-gray-700">
-                            Full Name
-                        </label>
-                        <input
-                            id="fullName"
-                            type="text"
-                            value={fullName}
-                            onChange={(e) => setFullName(e.target.value)}
-                            className="w-full px-3 py-2 mt-1 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
-                            required
-                        />
-                    </div>
-
-                    <div>
-                        <label htmlFor="username" className="block text-sm font-medium text-gray-700">
-                            Username
-                        </label>
-                        <input
-                            id="username"
-                            type="text"
-                            value={username}
-                            onChange={(e) => setUsername(e.target.value)}
-                            className="w-full px-3 py-2 mt-1 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
-                            required
-                        />
-                    </div>
-
-                    <div>
+                <form onSubmit={handleForgotPassword} className="space-y-4">
+                    {/* <div>
                         <label htmlFor="email" className="block text-sm font-medium text-gray-700">
                             Email
                         </label>
@@ -144,11 +115,11 @@ const RegisterScreen = () => {
                             className="w-full px-3 py-2 mt-1 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
                             required
                         />
-                    </div>
+                    </div> */}
 
                     <div className="relative">
                         <label htmlFor="password" className="block text-sm font-medium text-gray-700">
-                            Password
+                            New Password
                         </label>
                         <div className="relative">
                             <input
@@ -176,7 +147,7 @@ const RegisterScreen = () => {
 
                     <div className="relative">
                         <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700">
-                            Confirm Password
+                            New Confirm Password
                         </label>
                         <div className="relative">
                             <input
@@ -212,23 +183,16 @@ const RegisterScreen = () => {
                                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                                 </svg>
-                                Registering...
+                                Resetting password...
                             </span>
-                        ) : 'GET STARTED'}
+                        ) : 'Reset Password'}
                     </button>
                 </form>
 
-                <div className="text-center">
-                    <button
-                        onClick={() => navigate('/login')}
-                        className="text-sm font-medium text-indigo-600 hover:text-indigo-500 cursor-pointer"
-                    >
-                        Already have an account? Login
-                    </button>
-                </div>
+
             </div>
         </div>
     );
 };
 
-export default RegisterScreen;
+export default ResetPassword;

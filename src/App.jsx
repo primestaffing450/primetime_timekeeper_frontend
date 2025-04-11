@@ -6,6 +6,8 @@ import UserWeeklySummaries from './screens/UserWeeklySummaries';
 import ManagerDashboardScreen from './screens/ManagerDashbaordScreen';
 import RegisterScreen from './screens/RegisterScreen';
 import EmployeeDashboard from './screens/EmployeeDashboard';
+import ForgotPassword from './screens/ForgotPassword';
+import ResetPassword from './screens/ResetPassword';
 
 function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(null);
@@ -36,7 +38,7 @@ function App() {
       if (!isLoading) {
         const currentPath = window.location.pathname;
         // Skip redirection for login and register routes
-        if (!isLoggedIn && currentPath !== '/login' && currentPath !== '/register') {
+        if (!isLoggedIn && currentPath !== '/login' && currentPath !== '/register' && currentPath !== '/forgot-password' && currentPath !== '/reset-password') {
           navigate('/login');
         } else if (isLoggedIn && currentPath === '/') {
           navigate('/dashboard');
@@ -76,6 +78,24 @@ function App() {
               <Navigate to="/dashboard" replace />
             )
           } />
+
+          <Route path="/forgot-password" element={
+            !isLoggedIn ? (
+              <ForgotPassword setIsLoggedIn={setIsLoggedIn} setRole={setRole} />
+            ) : (
+              <Navigate to="/dashboard" replace />
+            )
+          } />
+
+          <Route path="/reset-password" element={
+            !isLoggedIn ? (
+              <ResetPassword setIsLoggedIn={setIsLoggedIn} setRole={setRole} />
+            ) : (
+              <Navigate to="/dashboard" replace />
+            )
+          } />
+
+
 
           {/* Protected routes */}
           {isLoggedIn && (
