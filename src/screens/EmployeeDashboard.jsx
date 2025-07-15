@@ -21,6 +21,9 @@ const EmployeeDashboard = ({ setIsLoggedIn }) => {
     const [file, setFile] = useState(null);
     const [uploadedDates, setUploadedDates] = useState([]);
     const [draftData, setDraftData] = useState([]);
+    const [showDeleteModal, setShowDeleteModal] = useState(false);
+    const [deleteLoading, setDeleteLoading] = useState(false);
+    const [notes, setNotes] = useState('');
     const navigate = useNavigate();
 
     // Generate time slots (30-minute intervals from 8 AM to 8 PM)
@@ -101,22 +104,24 @@ const EmployeeDashboard = ({ setIsLoggedIn }) => {
 
     const isDateDisabled = (dateString) => {
         const today = new Date().toISOString().split('T')[0];
-        // Disable future dates and already uploaded dates
-        return dateString > today || uploadedDates.includes(dateString);
+        const isFuture = dateString > today;
+        const isUploaded = uploadedDates.includes(dateString);
+        const isDraft = draftData.some(draft => draft.date === dateString);
+        const result = isFuture || (isUploaded && !isDraft);
+        
+        return result;
     };
 
     const findAvailableDate = () => {
-        // Find the nearest available date
         const today = new Date().toISOString().split('T')[0];
         if (!isDateDisabled(today)) {
             setCurrentDate(today);
             return;
         }
 
-        // Find the first available date before today
         let date = new Date(today);
         let found = false;
-        for (let i = 0; i < 30; i++) { // Check up to 30 days back
+        for (let i = 0; i < 30; i++) { 
             date.setDate(date.getDate() - 1);
             const dateStr = date.toISOString().split('T')[0];
             if (!isDateDisabled(dateStr)) {
@@ -164,7 +169,7 @@ const EmployeeDashboard = ({ setIsLoggedIn }) => {
 
     const saveAsDraft = async () => {
         if (!currentDate ||
-            !days[currentDate]?.timeIn || !days[currentDate]?.timeOut || !days[currentDate]?.hours) {
+            !days[currentDate]?.timeIn || !days[currentDate]?.timeOut || !days[currentDate]?.totalHours) {
             toast.error('All fields are required for the current date!', { position: "top-center" });
             return;
         }
@@ -175,12 +180,13 @@ const EmployeeDashboard = ({ setIsLoggedIn }) => {
             formData.append(`[${currentDate}][time_in]`, days[currentDate].timeIn);
             formData.append(`[${currentDate}][time_out]`, days[currentDate].timeOut);
             formData.append(`[${currentDate}][lunch_timeout]`, days[currentDate].lunch || 0);
-            formData.append(`[${currentDate}][total_hours]`,
-                formatHoursMinutes(days[currentDate]?.hours, days[currentDate]?.minutes));
+            formData.append(`[${currentDate}][total_hours]`, 
+                parseFloat(days[currentDate]?.totalHours || 0).toFixed(2));
             formData.append('date', currentDate);
             if (file) {
                 formData.append('image_file', file);
             }
+            formData.append(`[${currentDate}][notes]`, days[currentDate]?.notes || '');
 
             const response = await saveDraftTimesheet(formData, accessToken);
 
@@ -212,13 +218,11 @@ const EmployeeDashboard = ({ setIsLoggedIn }) => {
         }
     };
 
-    const formatHoursMinutes = (hours, minutes) => {
-        return `${hours || 0}:${(minutes || 0).toString().padStart(2, '0')}`;
-    };
+
 
     const handleSubmit = async () => {
-        if (!days[currentDate]?.timeIn && !days[currentDate]?.timeOut && !days[currentDate]?.hours && !file) {
-            toast.error('At least one field is required', { position: "top-center" });
+        if (!days[currentDate]?.timeIn || !days[currentDate]?.timeOut || !days[currentDate]?.totalHours || !file) {
+            toast.error('All fields are required', { position: "top-center" });
             return;
         }
         if (!currentDate) {
@@ -232,8 +236,8 @@ const EmployeeDashboard = ({ setIsLoggedIn }) => {
                 formData.append(`[${date}][time_in]`, data.timeIn);
                 formData.append(`[${date}][time_out]`, data.timeOut);
                 formData.append(`[${date}][lunch_timeout]`, data.lunch || 0);
-                formData.append(`[${date}][total_hours]`,
-                    formatHoursMinutes(data?.hours, data?.minutes));
+                formData.append(`[${date}][total_hours]`, parseFloat(data?.totalHours || 0).toFixed(2));
+                formData.append(`[${date}][notes]`, data.notes || '');
             });
             formData.append('date', currentDate);
 
@@ -283,6 +287,41 @@ const EmployeeDashboard = ({ setIsLoggedIn }) => {
         setTimeout(() => navigate('/login'), 2000);
     };
 
+    const handleDeleteAccount = async () => {
+        setDeleteLoading(true);
+        try {
+            const response = await api.deleteAccount(accessToken);
+            if (response.success) {
+                localStorage.clear();
+                setIsLoggedIn(false);
+                toast.success('Account deleted successfully', {
+                    position: "top-center",
+                    autoClose: 3000,
+                });
+                setTimeout(() => navigate('/login'), 3000);
+            } else {
+                if (response.status === 401) {
+                    handleSessionExpired();
+                } else {
+                    toast.error(response.message || 'Failed to delete account', {
+                        position: "top-center",
+                        autoClose: 3000,
+                    });
+                }
+            }
+        } catch (error) {
+            toast.error('Error deleting account', {
+                position: "top-center",
+                autoClose: 3000,
+            });
+        } finally {
+            setDeleteLoading(false);
+            setShowDeleteModal(false);
+        }
+    };
+
+    
+
     const today = new Date();
     const dayOfWeek = today.getDay();
     const isWeekendSubmission = dayOfWeek === 5 || dayOfWeek === 6 || dayOfWeek === 0;
@@ -295,15 +334,26 @@ const EmployeeDashboard = ({ setIsLoggedIn }) => {
                     <div className="flex items-center space-x-4">
                         <img src={Logo} alt="Logo" className="h-10" />
                     </div>
-                    <button
-                        onClick={handleLogout}
-                        className="flex items-center px-3 py-2 text-sm font-medium text-red-600 hover:text-red-800 hover:bg-red-50 rounded-md transition-colors"
-                    >
-                        <svg className="w-5 h-5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                        </svg>
-                        Logout
-                    </button>
+                    <div className="flex items-center space-x-3">
+                        <button
+                            onClick={() => setShowDeleteModal(true)}
+                            className="flex items-center px-3 py-2 text-sm font-medium text-red-600 hover:text-red-800 hover:bg-red-50 rounded-md transition-colors border border-red-300 hover:border-red-400"
+                        >
+                            <svg className="w-5 h-5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                            Delete Account
+                        </button>
+                        <button
+                            onClick={handleLogout}
+                            className="flex items-center px-3 py-2 text-sm font-medium text-red-600 hover:text-red-800 hover:bg-red-50 rounded-md transition-colors"
+                        >
+                            <svg className="w-5 h-5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                            </svg>
+                            Logout
+                        </button>
+                    </div>
                 </div>
             </header>
 
@@ -374,37 +424,32 @@ const EmployeeDashboard = ({ setIsLoggedIn }) => {
                                 </select>
                             </div>
 
-                            {/* Total Hours - Modified with proper hours and minutes inputs */}
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">Total Hours</label>
-                                    <input
-                                        type="number"
-                                        value={days[currentDate]?.hours || ''}
-                                        onChange={(e) => {
-                                            // Only allow whole numbers between 0-24
-                                            const value = Math.min(24, Math.max(0, parseInt(e.target.value) || 0));
-                                            handleDataChange('hours', value);
-                                        }}
-                                        className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                        placeholder="Hours"
-                                        min="0"
-                                        max="24"
-                                        step="1"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">Minutes</label>
-                                    <select
-                                        value={days[currentDate]?.minutes || '0'}
-                                        onChange={(e) => handleDataChange('minutes', e.target.value)}
-                                        className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                    >
-                                        {[0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55].map(min => (
-                                            <option key={min} value={min}>{min.toString().padStart(2, '0')} min</option>
-                                        ))}
-                                    </select>
-                                </div>
+                            {/* Total Hours - Decimal format */}
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">Total Hours</label>
+                                <input
+                                    type="number"
+                                    value={days[currentDate]?.totalHours || ''}
+                                    onChange={(e) => {
+                                        // Allow decimal values between 0-24 with up to 2 decimal places
+                                        const value = e.target.value;
+                                        if (value === '') {
+                                            handleDataChange('totalHours', '');
+                                            return;
+                                        }
+                                        const numValue = parseFloat(value);
+                                        if (!isNaN(numValue) && numValue >= 0 && numValue <= 24) {
+                                            // Round to 2 decimal places
+                                            const roundedValue = Math.round(numValue * 100) / 100;
+                                            handleDataChange('totalHours', roundedValue.toString());
+                                        }
+                                    }}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                    placeholder="8.50"
+                                    min="0"
+                                    max="24"
+                                    step="0.01"
+                                />
                             </div>
                         </div>
 
@@ -453,7 +498,16 @@ const EmployeeDashboard = ({ setIsLoggedIn }) => {
                                 </div>
                             )}
                         </div>
-
+                        <div className="mb-6">
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Notes (Optional)</label>
+                        <textarea
+                            value={days[currentDate]?.notes || ''}
+                            onChange={(e) => handleDataChange('notes', e.target.value)}
+                            rows="3"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                            placeholder="Add any notes or comments here..."
+                        ></textarea>
+                        </div>
                         {/* Buttons */}
                         <div className="flex flex-col sm:flex-row gap-4">
                             <button
@@ -489,8 +543,54 @@ const EmployeeDashboard = ({ setIsLoggedIn }) => {
                     draftData={draftData}
                     loading={draftLoading}
                     onRefresh={fetchDraftData}
+                    accessToken={accessToken}
                 />
             </main>
+
+            {/* Delete Account Confirmation Modal */}
+            {showDeleteModal && (
+                <div className="fixed inset-0 backdrop-blur-sm bg-white/30 overflow-y-auto h-full w-full z-50 flex items-center justify-center">
+                    <div className="relative p-6 border w-96 shadow-2xl rounded-md bg-white/95 backdrop-blur-md">
+                        <div className="mt-3 text-center">
+                            <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100">
+                                <svg className="h-6 w-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.732-.833-2.5 0L4.314 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                                </svg>
+                            </div>
+                            <h3 className="text-lg font-medium text-gray-900 mt-4">Delete Account</h3>
+                            <div className="mt-2 px-7 py-3">
+                                <p className="text-sm text-gray-500">
+                                    Are you sure you want to delete your account? This action cannot be undone and all your data will be permanently removed.
+                                </p>
+                            </div>
+                            <div className="flex gap-4 mt-4">
+                                <button
+                                    onClick={() => setShowDeleteModal(false)}
+                                    disabled={deleteLoading}
+                                    className="flex-1 px-4 py-2 bg-gray-300 text-gray-700 text-base font-medium rounded-md shadow-sm hover:bg-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-300 disabled:opacity-50"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    onClick={handleDeleteAccount}
+                                    disabled={deleteLoading}
+                                    className="flex-1 px-4 py-2 bg-red-600 text-white text-base font-medium rounded-md shadow-sm hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 disabled:opacity-50"
+                                >
+                                    {deleteLoading ? (
+                                        <span className="flex items-center justify-center">
+                                            <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                            </svg>
+                                            Deleting...
+                                        </span>
+                                    ) : 'Delete Account'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

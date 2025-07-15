@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
-import api from '../api';
+import api, { deleteUploadedTimesheet } from '../api';
 
 const UserDetailScreen = ({ setIsLoggedIn }) => {
     const { userId } = useParams();
@@ -11,6 +11,7 @@ const UserDetailScreen = ({ setIsLoggedIn }) => {
     const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
     const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
     const [weeks, setWeeks] = useState([]);
+    const [deletingWeekId, setDeletingWeekId] = useState(null);
 
     useEffect(() => {
         fetchUserDetails();
@@ -56,8 +57,81 @@ const UserDetailScreen = ({ setIsLoggedIn }) => {
         }
     };
 
+    const handleDeleteWeek = (weekId) => {
+        toast.info(
+            <div>
+                <p>Are you sure you want to delete this weekly timesheet? This action cannot be undone.</p>
+                <div className="flex justify-center gap-4 mt-2">
+                    <button
+                        onClick={async () => {
+                            toast.dismiss();
+                            setDeletingWeekId(weekId);
+                            try {
+                                const token = localStorage.getItem('userToken');
+                                if (!token) {
+                                    toast.error('Please login to access this page', {
+                                        position: "top-center",
+                                        autoClose: 3000,
+                                    });
+                                    setDeletingWeekId(null);
+                                    return;
+                                }
+                                const response = await deleteUploadedTimesheet(weekId, token);
+                                if (response.success) {
+                                    toast.success('Weekly timesheet deleted successfully', {
+                                        position: "top-center",
+                                        autoClose: 3000,
+                                    });
+                                    setWeeks((prev) => prev.filter(week => week.week_id !== weekId));
+                                } else {
+                                    if (response.status === 401) {
+                                        localStorage.clear();
+                                        setIsLoggedIn(false);
+                                        toast.error('Session expired. Please login again', {
+                                            position: "top-center",
+                                            autoClose: 3000,
+                                        });
+                                    } else {
+                                        toast.error(response.message || 'Failed to delete weekly timesheet', {
+                                            position: "top-center",
+                                            autoClose: 3000,
+                                        });
+                                    }
+                                }
+                            } catch (error) {
+                                toast.error('Failed to delete weekly timesheet. Please try again.', {
+                                    position: "top-center",
+                                    autoClose: 3000,
+                                });
+                            } finally {
+                                setDeletingWeekId(null);
+                            }
+                        }}
+                        className="px-3 py-1 bg-red-600 text-white rounded"
+                    >
+                        Yes
+                    </button>
+                    <button
+                        onClick={() => toast.dismiss()}
+                        className="px-3 py-1 bg-gray-300 text-gray-800 rounded"
+                    >
+                        Cancel
+                    </button>
+                </div>
+            </div>,
+            {
+                position: "top-center",
+                autoClose: false,
+                closeButton: false,
+            }
+        );
+    };
+
     const renderWeekCard = (week) => (
-        <div key={week.week_id} className="bg-white rounded-xl shadow-md overflow-hidden hover:shadow-lg transition-shadow">
+        <div
+            key={week.week_id}
+            className="bg-white rounded-xl shadow-md overflow-hidden hover:shadow-lg transition-shadow w-full mx-auto"
+        >
             <div className="p-5">
                 <div className="flex justify-between items-start">
                     <div>
@@ -66,12 +140,33 @@ const UserDetailScreen = ({ setIsLoggedIn }) => {
                             {new Date(week.week_end).toISOString().slice(0, 10)}
                         </h3>
                     </div>
-                    <button
-                        onClick={() => navigate(`/weekly-summaries/${week.week_id}`)}
-                        className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors text-sm"
-                    >
-                        View Details
-                    </button>
+                    <div className="flex space-x-2">
+                        <button
+                            onClick={() => navigate(`/weekly-summaries/${week.week_id}`)}
+                            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors text-sm"
+                        >
+                            View Details
+                        </button>
+                        <button
+                            onClick={() => handleDeleteWeek(week.week_id)}
+                            disabled={deletingWeekId === week.week_id}
+                            className="bg-red-600 hover:bg-red-700 disabled:bg-red-400 text-white px-4 py-2 rounded-lg transition-colors text-sm flex items-center"
+                        >
+                            {deletingWeekId === week.week_id ? (
+                                <>
+                                    <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-white mr-2"></div>
+                                    Deleting...
+                                </>
+                            ) : (
+                                <>
+                                    <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                    </svg>
+                                    Delete
+                                </>
+                            )}
+                        </button>
+                    </div>
                 </div>
                 <div className="mt-4 flex justify-between text-sm text-gray-600">
                     <span>Week ID: {week.week_id}</span>
@@ -173,7 +268,7 @@ const UserDetailScreen = ({ setIsLoggedIn }) => {
                     </div>
 
                     {weeks.length > 0 ? (
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                             {weeks.map(renderWeekCard)}
                         </div>
                     ) : (

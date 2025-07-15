@@ -11,6 +11,35 @@ const UserWeeklySummaries = ({ setIsLoggedIn }) => {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
 
+    const downloadImage = () => {
+        try {
+            const imageUrl = `${apiUrl}/${data?.image}`;
+            const weekStart = new Date(data?.week_data?.week_start).toISOString().slice(0, 10);
+            const weekEnd = new Date(data?.week_data?.week_end).toISOString().slice(0, 10);
+            const filename = `timesheet_${weekStart}_to_${weekEnd}.png`;
+            const link = document.createElement('a');
+            link.href = imageUrl;
+            link.download = filename;
+            link.target = '_blank';
+            link.rel = 'noopener noreferrer';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            
+            // toast.success('Download started!', {
+            //     position: "top-center",
+            //     autoClose: 2000,
+            // });
+            
+        } catch (error) {
+            console.error('Download error:', error);
+            toast.error('Download failed. Please try again.', {
+                position: "top-center",
+                autoClose: 3000,
+            });
+        }
+    };
+
     useEffect(() => {
         const fetchWeeklyTimesheet = async () => {
             try {
@@ -90,7 +119,8 @@ const UserWeeklySummaries = ({ setIsLoggedIn }) => {
                         <img
                             src={`${apiUrl}/${data?.image}`}
                             alt="Weekly timesheet"
-                            className="w-full max-h-96  mx-auto block"
+                            className="w-full max-h-96 mx-auto block cursor-pointer hover:opacity-90 transition-opacity"
+                            onClick={downloadImage}
                             onError={(e) => {
                                 e.target.onerror = null;
                                 e.target.src = 'https://via.placeholder.com/800x400?text=Timesheet+Image+Not+Available';

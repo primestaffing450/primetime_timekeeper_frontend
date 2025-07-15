@@ -158,7 +158,20 @@ const api = {
             return { success: false, message: error.response?.data?.detail || 'Failed to fetch timesheet details', status: error?.response?.status };
         }
     },
-
+    deleteAccount: async (accessToken) => {
+        try {
+            const response = await axios.delete(`${API_URL}/auth/delete-account`, {
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${accessToken}`
+                },
+            });
+            return { success: true, data: response.data };
+        } catch (error) {
+            console.log('Delete Account Error:', error?.response?.data?.detail);
+            return { success: false, message: error?.response?.data?.detail, status: error?.response?.status };
+        }
+    },
 };
 export const uploadTimesheet = async (formData, accessToken) => {
     try {
@@ -190,5 +203,35 @@ export const saveDraftTimesheet = async (formData, accessToken) => {
     }
 };
 
+export const deleteDraftByDate = async (date, token) => {
+    try {
+        const response = await axios.delete(`${API_URL}/timesheet/timesheet/date/${date}`, {
+            headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${token}`,
+            },
+        });
+        return { success: true, data: response.data };
+    } catch (error) {
+        console.log('Error deleting draft:', error?.response?.data?.detail || error.message);
+        return { success: false, message: error?.response?.data?.detail || 'Network error', status: error?.response?.status };
+    }
+};
+export const deleteUploadedTimesheet = async (week_id, token) => {
+    try {
+        const response = await axios.delete(`${API_URL}/manager/timesheets/weekly/${week_id}`, {
+            headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${token}`,
+            },
+        });
+        return { success: true, data: response.data };
+    } catch (error) {
+        console.log('Error deleting uploaded timesheet:', error?.response?.data
+            ? error?.response?.data?.detail
+            : 'Network error');
+        return { success: false, message: error?.response?.data?.detail || 'Network error', status: error?.response?.status };
+    }
+};
 
 export default api;
