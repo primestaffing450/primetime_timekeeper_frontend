@@ -18,7 +18,7 @@ const EmployeeDashboard = ({ setIsLoggedIn }) => {
     const [loading, setLoading] = useState(false);
     const [draftLoading, setDraftLoading] = useState(false);
     const [accessToken, setAccessToken] = useState('');
-    const [file, setFile] = useState(null);
+    const [files, setFiles] = useState([]);
     const [uploadedDates, setUploadedDates] = useState([]);
     const [draftData, setDraftData] = useState([]);
     const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -155,16 +155,56 @@ const EmployeeDashboard = ({ setIsLoggedIn }) => {
     };
 
     const handleFileChange = (e) => {
-        const selectedFile = e.target.files[0];
-        console.log(selectedFile, '---===');
-        if (selectedFile) {
-            if (selectedFile.type === 'application/pdf' || selectedFile.type.startsWith('image/')) {
-                setFile(selectedFile);
-                toast.success('File selected successfully');
+        const selectedFiles = Array.from(e.target.files);
+        console.log(selectedFiles, '---===');
+        
+        if (selectedFiles.length === 0) return;
+        const maxFileSize = 10 * 1024 * 1024;
+        const validFiles = [];
+        const errors = [];
+        
+        selectedFiles.forEach(file => {
+            if (!(file.type === 'application/pdf' || file.type.startsWith('image/'))) {
+                errors.push(`${file.name}: Invalid file type`);
+            } else if (file.size > maxFileSize) {
+                errors.push(`${file.name}: File too large (max 10MB)`);
             } else {
-                toast.error('Please select a PDF or image file');
+                validFiles.push(file);
             }
+        });
+        
+        if (errors.length > 0) {
+            toast.error(`File validation errors:\n${errors.join('\n')}`);
         }
+        
+        if (validFiles.length > 0) {
+            const totalFiles = files.length + validFiles.length;
+            if (totalFiles > 10) {
+                toast.error('Maximum 10 files allowed');
+                return;
+            }
+            setFiles(prevFiles => [...prevFiles, ...validFiles]);
+            toast.success(`${validFiles.length} file(s) selected successfully`);
+        }
+        e.target.value = '';
+    };
+
+    const removeFile = (indexToRemove) => {
+        setFiles(prevFiles => prevFiles.filter((_, index) => index !== indexToRemove));
+        toast.info('File removed');
+    };
+
+    const clearAllFiles = () => {
+        setFiles([]);
+        toast.info('All files cleared');
+    };
+
+    const formatFileSize = (bytes) => {
+        if (bytes === 0) return '0 Bytes';
+        const k = 1024;
+        const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
     };
 
     const saveAsDraft = async () => {
@@ -183,16 +223,17 @@ const EmployeeDashboard = ({ setIsLoggedIn }) => {
             formData.append(`[${currentDate}][total_hours]`, 
                 parseFloat(days[currentDate]?.totalHours || 0).toFixed(2));
             formData.append('date', currentDate);
-            if (file) {
-                formData.append('image_file', file);
-            }
+            files.forEach((file, index) => {
+                formData.append(`image_files`, file);
+            });
+            
             formData.append(`[${currentDate}][notes]`, days[currentDate]?.notes || '');
 
             const response = await saveDraftTimesheet(formData, accessToken);
 
             if (response.success) {
                 toast.success(`Draft saved for ${currentDate}`, { position: "top-center" });
-                setFile(null);
+                setFiles([]);
                 setDays({});
                 fetchUploadedDates();
                 fetchDraftData();
@@ -221,8 +262,8 @@ const EmployeeDashboard = ({ setIsLoggedIn }) => {
 
 
     const handleSubmit = async () => {
-        if (!days[currentDate]?.timeIn || !days[currentDate]?.timeOut || !days[currentDate]?.totalHours || !file) {
-            toast.error('All fields are required', { position: "top-center" });
+        if (!days[currentDate]?.timeIn || !days[currentDate]?.timeOut || !days[currentDate]?.totalHours || files.length === 0) {
+            toast.error('All fields are required and at least one file must be uploaded', { position: "top-center" });
             return;
         }
         if (!currentDate) {
@@ -241,15 +282,15 @@ const EmployeeDashboard = ({ setIsLoggedIn }) => {
             });
             formData.append('date', currentDate);
 
-            if (file) {
-                formData.append('image_file', file);
-            }
+            files.forEach((file, index) => {
+                formData.append(`image_files`, file);
+            });
 
             const response = await uploadTimesheet(formData, accessToken);
             if (response.success) {
                 toast.success('Timesheet submitted successfully!', { position: "top-center" });
                 setDays({});
-                setFile(null);
+                setFiles([]);
                 // Refresh uploaded dates after submission
                 fetchUploadedDates();
                 fetchDraftData();
@@ -431,7 +472,7 @@ const EmployeeDashboard = ({ setIsLoggedIn }) => {
                                     type="number"
                                     value={days[currentDate]?.totalHours || ''}
                                     onChange={(e) => {
-                                        // Allow decimal values between 0-24 with up to 2 decimal places
+                                        
                                         const value = e.target.value;
                                         if (value === '') {
                                             handleDataChange('totalHours', '');
@@ -452,51 +493,111 @@ const EmployeeDashboard = ({ setIsLoggedIn }) => {
                                 />
                             </div>
                         </div>
+                          {/* Night Shift Checkbox*/}
+                        <div className="mb-6">
+                            <label className="inline-flex items-center">
+                                <input
+                                    type="checkbox" 
+                                    checked={days[currentDate]?.nightShift || false}
+                                    onChange={(e) => handleDataChange('nightShift', e.target.checked)}
+                                    className="form-checkbox h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                                />
+                                <span className="ml-2 text-sm text-gray-700">Night Shift</span>
+                            </label>    
+                        </div> 
 
                         {/* File Upload */}
                         <div className="mb-8">
-                            <label className="block text-sm font-medium text-gray-700 mb-2">Upload Timesheet (PDF or Image)</label>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                                Upload Timesheet
+                            </label>
                             <div className="mt-1 flex items-center">
                                 <label className="inline-flex items-center px-4 py-2 bg-white border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 cursor-pointer transition-colors">
-                                    Choose File
+                                    <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                                    </svg>
+                                    Choose Files
                                     <input
                                         type="file"
                                         onChange={handleFileChange}
                                         accept=".pdf,.jpg,.jpeg,.png"
                                         className="sr-only"
+                                        multiple
                                     />
                                 </label>
                                 <span className="ml-4 text-sm text-gray-600 truncate max-w-xs">
-                                    {file ? file.name : 'No file selected'}
+                                    {files.length > 0 ? (
+                                        <div className="flex flex-wrap items-center gap-2">
+                                            {files.map((file, index) => (
+                                                <span key={index} className="flex items-center bg-blue-100 text-blue-800 text-xs font-medium px-2.5 py-0.5 rounded-full">
+                                                    {file.name}
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => removeFile(index)}
+                                                        className="ml-1 text-blue-800 hover:text-blue-900 focus:outline-none"
+                                                    >
+                                                        <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                                        </svg>
+                                                    </button>
+                                                </span>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        'No file selected'
+                                    )}
                                 </span>
-                                {file && (
+                                {files.length > 0 && (
                                     <button
                                         type="button"
-                                        onClick={() => setFile(null)}
+                                        onClick={clearAllFiles}
                                         className="ml-2 text-sm text-red-500 hover:text-red-700"
                                     >
-                                        Remove
+                                        Clear All
                                     </button>
                                 )}
                             </div>
-                            {file && (
-                                <div className="mt-3">
-                                    {file.type.startsWith('image/') ? (
-                                        <img
-                                            src={URL.createObjectURL(file)}
-                                            alt="Preview"
-                                            className="h-40 object-contain border rounded"
-                                        />
-                                    ) : (
-                                        <div className="flex items-center p-3 bg-gray-50 rounded border">
-                                            <svg className="h-8 w-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-                                            </svg>
-                                            <span className="ml-2 text-sm text-gray-600">{file.name}</span>
-                                        </div>
-                                    )}
-                                </div>
-                            )}
+                                                         {files.length > 0 && (
+                                 <div className="mt-3">
+                                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                         {files.map((file, index) => (
+                                             <div key={index} className="relative bg-gray-50 rounded border p-3">
+                                                 <div className="flex items-center justify-between mb-2">
+                                                     <div className="flex-1 min-w-0">
+                                                         <span className="text-sm text-gray-600 truncate block">{file.name}</span>
+                                                         <span className="text-xs text-gray-500">{formatFileSize(file.size)}</span>
+                                                     </div>
+                                                     <button
+                                                         type="button"
+                                                         onClick={() => removeFile(index)}
+                                                         className="text-red-500 hover:text-red-700 focus:outline-none ml-2"
+                                                     >
+                                                         <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                                         </svg>
+                                                     </button>
+                                                 </div>
+                                                 {file.type.startsWith('image/') ? (
+                                                     <img
+                                                         src={URL.createObjectURL(file)}
+                                                         alt="Preview"
+                                                         className="h-32 w-full object-contain border rounded"
+                                                     />
+                                                 ) : (
+                                                     <div className="flex items-center justify-center h-32 bg-gray-100 rounded">
+                                                         <div className="text-center">
+                                                             <svg className="h-12 w-12 text-gray-400 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                                                             </svg>
+                                                             <span className="text-xs text-gray-500">PDF</span>
+                                                         </div>
+                                                     </div>
+                                                 )}
+                                             </div>
+                                         ))}
+                                     </div>
+                                 </div>
+                             )}
                         </div>
                         <div className="mb-6">
                         <label className="block text-sm font-medium text-gray-700 mb-2">Notes (Optional)</label>

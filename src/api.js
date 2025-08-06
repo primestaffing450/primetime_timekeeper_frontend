@@ -7,6 +7,7 @@ const api = {
         try {
             const payload = {
                 username_or_email,
+                // login:username_or_email,
                 password,
             };
             const response = await axios.post(`${API_URL}/auth/login`, payload, {
@@ -21,13 +22,13 @@ const api = {
             return { success: false, message: error?.response?.data?.detail };
         }
     },
-    register: async (username, email, password, fullName) => {
+    register: async (username, email, password, firstName, lastName) => {
         try {
             const payload = {
                 username,
                 email,
                 password,
-                full_name: fullName,
+                full_name: `${lastName} ${firstName}`
             };
             const response = await axios.post(`${API_URL}/auth/register`, payload, {
                 headers: {
@@ -233,5 +234,19 @@ export const deleteUploadedTimesheet = async (week_id, token) => {
         return { success: false, message: error?.response?.data?.detail || 'Network error', status: error?.response?.status };
     }
 };
+export const UpdateTimesheet = async (timesheet_id, data, accessToken) => {
+    try {
+        const response = await axios.patch(`${API_URL}/manager/timesheets/${timesheet_id}/update`, data, {
+            headers: { 
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${accessToken}` 
+            }
+        });
+        return { success: true, data: response.data };
+    } catch (error) {
+        console.log('Error updating timesheet:', error?.response?.data?.detail || error.message);
+        return { success: false, message: error?.response?.data?.detail, status: error?.response?.status };
+    }
+}
 
 export default api;

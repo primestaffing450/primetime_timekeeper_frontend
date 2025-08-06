@@ -7,11 +7,14 @@ import { saveAs } from "file-saver";
 import JSZip from "jszip";
 import Logo from "../assets/Logo.png";
 
+const apiUrl = import.meta.env.VITE_REACT_API_URL;
+
 const ManagerDashboardScreen = ({ setIsLoggedIn }) => {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [search, setSearch] = useState("");
+  const [timesheetExporting, setTimesheetExporting] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -75,11 +78,14 @@ const ManagerDashboardScreen = ({ setIsLoggedIn }) => {
     }
   };
 
-  const fetchExportData = async (token) => {
-    setLoading(true);
+  const fetchExportData = async (token, useGlobalLoading = true) => {
+    if (useGlobalLoading) {
+      setLoading(true);
+    }
     try {
       const response = await api.exportExcelUsersData(token);
       if (response.success) {
+        console.log(response.data?.rows)
         return response.data?.rows;
       } else {
         if (response.status === 401) {
@@ -96,14 +102,16 @@ const ManagerDashboardScreen = ({ setIsLoggedIn }) => {
     } catch (error) {
       throw error;
     } finally {
-      setLoading(false);
+      if (useGlobalLoading) {
+        setLoading(false);
+      }
     }
   };
-
-  const filteredUsers = users?.filter(
+  console.log(users)
+  const filteredUsers = users?.filter( 
     (user) =>
-      user.full_name.toLowerCase().includes(search.toLowerCase()) ||
-      user.email.toLowerCase().includes(search.toLowerCase())
+      user?.full_name.toLowerCase().includes(search.toLowerCase()) ||
+      user?.email.toLowerCase().includes(search.toLowerCase())
   );
   const exportToExcel = async () => {
     try {
@@ -170,7 +178,38 @@ const ManagerDashboardScreen = ({ setIsLoggedIn }) => {
       return;
     }
 
-    const dataToExport = exportData.map((user) => {
+    const groupedData = {};
+    let maxImages = 0;
+    
+    exportData.forEach((user) => {
+      if (!user?.date_worked) return;
+      
+      const userWeekKey = `${user.name}_${user.email}_${user.date_worked}`;
+      
+      if (!groupedData[userWeekKey]) {
+        groupedData[userWeekKey] = {
+          ...user,
+          image_paths: []
+        };
+      }
+      
+      let imagePaths = [];
+      if (Array.isArray(user.image_path)) {
+        imagePaths = user.image_path;
+      } else if (user.image_path) {
+        imagePaths = [user.image_path];
+      }
+      
+      imagePaths.forEach(imagePath => {
+        if (imagePath && !groupedData[userWeekKey].image_paths.includes(imagePath)) {
+          const fullImageUrl = `${apiUrl}/${imagePath}`;
+          groupedData[userWeekKey].image_paths.push(fullImageUrl);
+        }
+      });
+      maxImages = Math.max(maxImages, groupedData[userWeekKey].image_paths.length);
+    });
+
+    const dataToExport = Object.values(groupedData).map((user) => {
       let localDateString = "N.A";
       let localTimeString = "N.A";
 
@@ -185,8 +224,17 @@ const ManagerDashboardScreen = ({ setIsLoggedIn }) => {
         const seconds = String(localDate.getSeconds()).padStart(2, "0");
         localTimeString = `${hours}:${minutes}:${seconds}`;
       }
+      let weekEndingDate = "N.A";
+      if (user?.date_worked) {
+        const date = new Date(user.date_worked);
+        const day = date.getDay(); 
+        const daysUntilSaturday = 6 - day;
+        const saturday = new Date(date);
+        saturday.setDate(date.getDate() + daysUntilSaturday);
+        weekEndingDate = saturday.toISOString().slice(0, 10); 
+      }
 
-      return {
+      const exportRow = {
         "Date Submitted": localDateString,
         "Time Stamp": localTimeString,
         Name: user?.name || "N.A",
@@ -197,12 +245,24 @@ const ManagerDashboardScreen = ({ setIsLoggedIn }) => {
         Lunch: user?.lunch || "N.A",
         "Total Daily Hours": user?.total_daily_hours || "N.A",
         Notes: user?.notes || "N.A",
+        "Week Ending": weekEndingDate,
         "Approve/Reject": user?.approve_reject || "N.A",
         "AI Discrepancy Detected (Y/N)": user?.ai_Discrepancy_detected || "N.A",
-        "Image Link": user?.image_path
-          ? { t: "s", v: "View Image", l: { Target: user.image_path } }
-          : "N.A",
       };
+      for (let i = 1; i <= maxImages; i++) {
+        const imageIndex = i - 1;
+        if (user?.image_paths && user.image_paths[imageIndex]) {
+          exportRow[`View Image ${i}`] = {
+            t: "s",
+            v: "View Image",
+            l: { Target: user.image_paths[imageIndex] }
+          };
+        } else {
+          exportRow[`View Image ${i}`] = "N.A";
+        }
+      }
+      
+      return exportRow;
     });
 
     const ws = XLSX.utils.json_to_sheet(dataToExport);
@@ -238,77 +298,8 @@ const ManagerDashboardScreen = ({ setIsLoggedIn }) => {
             <button
               onClick={async () => {
                 toast.dismiss();
-                setLoading(true);
-                try {
-                  const exportData = await fetchExportData(token);
-                  if (!exportData || exportData.length === 0) {
-                    toast.warning("No data available to export", {
-                      position: "top-center",
-                      autoClose: 3000,
-                    });
-                    setLoading(false);
-                    return;
-                  }
-                  // Group by user and week
-                  const groupByWeek = {};
-                  for (const user of exportData) {
-                    if (!user?.image_path || !user?.date_worked) continue;
-                    // Get the Monday of the week for date_worked
-                    const date = new Date(user.date_worked);
-                    const day = date.getDay();
-                    const diffToMonday = (day === 0 ? -6 : 1) - day; // Sunday=0, Monday=1
-                    const monday = new Date(date);
-                    monday.setDate(date.getDate() + diffToMonday);
-                    const sunday = new Date(monday);
-                    sunday.setDate(monday.getDate() + 6);
-                    const weekKey = `${monday.toISOString().slice(0, 10)}_to_${sunday.toISOString().slice(0, 10)}`;
-                    const userKey = user.name + "_" + user.email;
-                    if (!groupByWeek[userKey]) groupByWeek[userKey] = {};
-                    if (!groupByWeek[userKey][weekKey]) {
-                      groupByWeek[userKey][weekKey] = user;
-                      groupByWeek[userKey][weekKey].weekRange = weekKey;
-                    }
-                  }
-                  const zip = new JSZip();
-                  let count = 0;
-                  for (const userKey in groupByWeek) {
-                    for (const weekKey in groupByWeek[userKey]) {
-                      const user = groupByWeek[userKey][weekKey];
-                      try {
-                        const response = await fetch(user.image_path);
-                        if (!response.ok) continue;
-                        const blob = await response.blob();
-                        const safe = (val) => (val ? String(val).replace(/[\\/:*?"<>| ]+/g, "_") : "NA");
-                        const ext = user.image_path.split('.').pop().split(/\#|\?/)[0];
-                        // Use week range in filename
-                        const filename = `${safe(user.name)}_${safe(user.weekRange)}.${ext}`;
-                        zip.file(filename, blob);
-                        count++;
-                      } catch (e) {}
-                    }
-                  }
-                  if (count === 0) {
-                    toast.warning("No images found to export", {
-                      position: "top-center",
-                      autoClose: 3000,
-                    });
-                    setLoading(false);
-                    return;
-                  }
-                  const zipBlob = await zip.generateAsync({ type: "blob" });
-                  saveAs(zipBlob, `TimesheetImages_${new Date().toISOString().slice(0, 10)}.zip`);
-                  toast.success("Images exported as ZIP!", {
-                    position: "top-center",
-                    autoClose: 2000,
-                  });
-                } catch (error) {
-                  toast.error(error.message || "Failed to export images", {
-                    position: "top-center",
-                    autoClose: 3000,
-                  });
-                } finally {
-                  setLoading(false);
-                }
+                setTimesheetExporting(true);
+                await downloadAllTimesheetImages(token);
               }}
               className="px-3 py-1 bg-green-500 text-white rounded"
             >
@@ -334,6 +325,230 @@ const ManagerDashboardScreen = ({ setIsLoggedIn }) => {
         autoClose: 3000,
       });
     }
+  };
+
+  const downloadAllTimesheetImages = async (token) => {
+    try {
+      // Step 1: Get all data
+      const exportData = await fetchExportData(token, false);
+      if (!exportData || exportData.length === 0) {
+        toast.warning("No data available to export", {
+          position: "top-center",
+          autoClose: 3000,
+        });
+        setTimesheetExporting(false);
+        return;
+      }
+
+      console.log('Starting image export process...');
+      console.log('Export data received:', exportData.length, 'records');
+
+      // Step 2: Collect ALL distinct images with user info
+      const distinctImages = new Map();
+      
+      exportData.forEach((record, index) => {
+        console.log(`Processing record ${index + 1}:`, {
+          name: record.name,
+          email: record.email,
+          date_worked: record.date_worked,
+          image_path: record.image_path
+        });
+
+        if (!record.image_path || !record.name) return;
+
+        // Get week info
+        const weekInfo = getWeekInfo(record.date_worked);
+        
+        // Handle both single image and array of images
+        let imagePaths = [];
+        if (Array.isArray(record.image_path)) {
+          imagePaths = record.image_path.filter(path => path && path.trim());
+        } else if (record.image_path && record.image_path.trim()) {
+          imagePaths = [record.image_path.trim()];
+        }
+
+        imagePaths.forEach(imagePath => {
+          const cleanPath = imagePath.trim();
+          if (!cleanPath) return;
+
+          // Create unique key for this image
+          if (!distinctImages.has(cleanPath)) {
+            distinctImages.set(cleanPath, {
+              url: cleanPath,
+              userName: record.name,
+              userEmail: record.email,
+              weekInfo: weekInfo,
+              dateWorked: record.date_worked,
+              extension: getFileExtension(cleanPath)
+            });
+          }
+        });
+      });
+
+      console.log(`Found ${distinctImages.size} distinct images to download`);
+
+      if (distinctImages.size === 0) {
+        toast.warning("No images found to export", {
+          position: "top-center",
+          autoClose: 3000,
+        });
+        setTimesheetExporting(false);
+        return;
+      }
+
+      // Step 3: Download all images silently
+      const zip = new JSZip();
+      const imageArray = Array.from(distinctImages.values());
+      let successCount = 0;
+      let failCount = 0;
+
+      for (let i = 0; i < imageArray.length; i++) {
+        const imageInfo = imageArray[i];
+        
+        try {
+          console.log(`Downloading ${i + 1}/${imageArray.length}: ${imageInfo.url}`);
+
+          const blob = await downloadSingleImage(imageInfo.url, token);
+          
+          // Generate filename
+          const filename = generateFilename(imageInfo, i + 1);
+          
+          zip.file(filename, blob);
+          successCount++;
+          
+          console.log(`✓ Successfully downloaded: ${filename}`);
+
+        } catch (error) {
+          failCount++;
+          console.error(`✗ Failed to download: ${imageInfo.url}`, error);
+        }
+      }
+
+      console.log(`Download completed: ${successCount} success, ${failCount} failed`);
+
+      // Step 4: Generate and save ZIP
+      if (successCount > 0) {
+        console.log('Generating ZIP file...');
+        const zipBlob = await zip.generateAsync({ 
+          type: "blob",
+          compression: "DEFLATE",
+          compressionOptions: { level: 6 }
+        });
+        
+        const fileName = `TimesheetImages_${new Date().toISOString().slice(0, 10)}.zip`;
+        saveAs(zipBlob, fileName);
+        console.log(`ZIP file saved: ${fileName}`);
+
+        toast.success("Timesheet exported successfully!", {
+          position: "top-center",
+          autoClose: 3000,
+        });
+      } else {
+        toast.error("No images could be downloaded. Please check your network connection and try again.", {
+          position: "top-center",
+          autoClose: 4000,
+        });
+      }
+
+    } catch (error) {
+      console.error("Export error:", error);
+      toast.error(error.message || "Failed to export timesheet images", {
+        position: "top-center",
+        autoClose: 4000,
+      });
+    } finally {
+      setTimesheetExporting(false);
+    }
+  };
+
+  const downloadSingleImage = async (imagePath, token) => {
+    // Build full URL
+    const fullUrl = imagePath.startsWith('http') ? imagePath : `${apiUrl}/${imagePath}`;
+    
+    // Try with fetch first (modern approach)
+    try {
+      const headers = {};
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+      
+      const response = await fetch(fullUrl, {
+        method: 'GET',
+        headers,
+        mode: 'cors'
+      });
+      
+      if (response.ok) {
+        return await response.blob();
+      }
+      
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      
+    } catch (fetchError) {
+      console.log('Fetch failed, trying XMLHttpRequest:', fetchError.message);
+      
+      // Fallback to XMLHttpRequest
+      return new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        
+        xhr.onload = () => {
+          if (xhr.status === 200) {
+            resolve(xhr.response);
+          } else {
+            reject(new Error(`XHR ${xhr.status}: ${xhr.statusText}`));
+          }
+        };
+        
+        xhr.onerror = () => reject(new Error('Network error'));
+        xhr.ontimeout = () => reject(new Error('Request timeout'));
+        
+        xhr.open('GET', fullUrl);
+        xhr.responseType = 'blob';
+        xhr.timeout = 20000;
+        
+        if (token) {
+          xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+        }
+        
+        xhr.send();
+      });
+    }
+  };
+
+  const getWeekInfo = (dateWorked) => {
+    if (!dateWorked) return 'Unknown_Week';
+    
+    try {
+      const date = new Date(dateWorked);
+      const day = date.getDay();
+      const sunday = new Date(date);
+      sunday.setDate(date.getDate() - day);
+      const saturday = new Date(sunday);
+      saturday.setDate(sunday.getDate() + 6);
+      
+      return `${sunday.toISOString().slice(0, 10)}_to_${saturday.toISOString().slice(0, 10)}`;
+    } catch {
+      return 'Invalid_Week';
+    }
+  };
+
+  const getFileExtension = (filePath) => {
+    try {
+      return filePath.split('.').pop().split(/\#|\?/)[0] || 'jpg';
+    } catch {
+      return 'jpg';
+    }
+  };
+
+  const generateFilename = (imageInfo, index) => {
+    const safe = (str) => String(str || 'Unknown').replace(/[\\/:*?"<>| ]+/g, "_");
+    
+    const userName = safe(imageInfo.userName);
+    const weekInfo = safe(imageInfo.weekInfo);
+    const extension = imageInfo.extension;
+    const paddedIndex = String(index).padStart(3, '0');
+    
+    return `${paddedIndex}_${userName}_${weekInfo}.${extension}`;
   };
 
   const handleLogout = () => {
@@ -435,7 +650,7 @@ const ManagerDashboardScreen = ({ setIsLoggedIn }) => {
           </div>
           <button
           onClick={exportTimesheets}
-          disabled={loading}
+          disabled={timesheetExporting}
             className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
             >
             <svg
@@ -451,7 +666,7 @@ const ManagerDashboardScreen = ({ setIsLoggedIn }) => {
                 d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
                 />
             </svg>
-            {loading ? "Exporting..." : "Export Timesheets"}
+            {timesheetExporting ? "Exporting..." : "Export Timesheets"}
             </button>
           <button
             onClick={exportToExcel}
