@@ -220,8 +220,9 @@ const EmployeeDashboard = ({ setIsLoggedIn }) => {
             formData.append(`[${currentDate}][time_in]`, days[currentDate].timeIn);
             formData.append(`[${currentDate}][time_out]`, days[currentDate].timeOut);
             formData.append(`[${currentDate}][lunch_timeout]`, days[currentDate].lunch || 0);
-            formData.append(`[${currentDate}][total_hours]`, 
-                parseFloat(days[currentDate]?.totalHours || 0).toFixed(2));
+
+            formData.append(`[${currentDate}][night_shift]`, days[currentDate]?.nightShift || false);
+            formData.append(`[${currentDate}][total_hours]`, parseFloat(days[currentDate]?.totalHours || 0).toFixed(2));
             formData.append('date', currentDate);
             files.forEach((file, index) => {
                 formData.append(`image_files`, file);
@@ -279,6 +280,7 @@ const EmployeeDashboard = ({ setIsLoggedIn }) => {
                 formData.append(`[${date}][lunch_timeout]`, data.lunch || 0);
                 formData.append(`[${date}][total_hours]`, parseFloat(data?.totalHours || 0).toFixed(2));
                 formData.append(`[${date}][notes]`, data.notes || '');
+                formData.append(`[${date}][night_shift]`, data.nightShift || false);
             });
             formData.append('date', currentDate);
 
@@ -472,7 +474,7 @@ const EmployeeDashboard = ({ setIsLoggedIn }) => {
                                     type="number"
                                     value={days[currentDate]?.totalHours || ''}
                                     onChange={(e) => {
-                                        
+                                        // Allow decimal values between 0-24 with up to 2 decimal places
                                         const value = e.target.value;
                                         if (value === '') {
                                             handleDataChange('totalHours', '');
@@ -493,7 +495,8 @@ const EmployeeDashboard = ({ setIsLoggedIn }) => {
                                 />
                             </div>
                         </div>
-                          {/* Night Shift Checkbox*/}
+
+                        {/* Night Shift Checkbox*/}
                         <div className="mb-6">
                             <label className="inline-flex items-center">
                                 <input

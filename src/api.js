@@ -94,6 +94,23 @@ const api = {
             return { success: false, message: error?.response?.data?.detail, status: error?.response?.status };
         }
     },
+    deleteUserById: async (userId, accessToken) => {
+        try {
+            const payload = { employee_id: userId };
+            console.log(payload);
+            const response = await axios.delete(`${API_URL}/auth/delete-account`, {
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${accessToken}`,
+                },
+                data: payload
+            });
+            return { success: true, data: response.data };
+        } catch (error) {
+            console.log('Error deleting user:', error?.response?.data?.detail);
+            return { success: false, message: error?.response?.data?.detail, status: error?.response?.status };
+        }
+    },
     getAllDraftData: async (accessToken) => {
         try {
             const response = await axios.get(`${API_URL}/timesheet/timesheets/dates/draft`,

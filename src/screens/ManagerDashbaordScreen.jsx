@@ -15,6 +15,7 @@ const ManagerDashboardScreen = ({ setIsLoggedIn }) => {
   const [error, setError] = useState(null);
   const [search, setSearch] = useState("");
   const [timesheetExporting, setTimesheetExporting] = useState(false);
+  const [deletingUserId, setDeletingUserId] = useState(null);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -42,6 +43,62 @@ const ManagerDashboardScreen = ({ setIsLoggedIn }) => {
         autoClose: 3000,
       });
       setLoading(false);
+    }
+  };
+
+  const confirmAndDeleteUser = (user) => {
+    toast.info(
+      <div>
+        <p>Delete {user.full_name?.trim() || user.username}? This action cannot be undone.</p>
+        <div className="flex justify-center gap-4 mt-2">
+          <button
+            onClick={async () => {
+              toast.dismiss();
+              await handleDeleteUser(user._id);
+            }}
+            className="px-3 py-1 bg-red-600 text-white rounded"
+            disabled={deletingUserId === user._id}
+          >
+            Yes, delete
+          </button>
+          <button onClick={() => toast.dismiss()} className="px-3 py-1 bg-gray-300 rounded">
+            Cancel
+          </button>
+        </div>
+      </div>,
+      {
+        position: "top-center",
+        autoClose: false,
+        closeButton: false,
+      }
+    );
+  };
+
+  const handleDeleteUser = async (userId) => {
+    const token = localStorage.getItem("userToken");
+    if (!token) {
+      toast.error("Please login to proceed", { position: "top-center", autoClose: 3000 });
+      return;
+    }
+    try {
+      setDeletingUserId(userId);
+      const response = await api.deleteUserById(userId, token);
+      if (response.success) {
+        setUsers((prev) => prev.filter((u) => u._id !== userId));
+        toast.success("User deleted successfully", { position: "top-center", autoClose: 2500 });
+      } else {
+        if (response.status === 401) {
+          localStorage.clear();
+          setIsLoggedIn(false);
+          toast.error("Session expired. Please login again", { position: "top-center", autoClose: 3000 });
+        } else {
+          toast.error(response.message || "Failed to delete user", { position: "top-center", autoClose: 3000 });
+        }
+      }
+    } catch (e) {
+      toast.error("Network error occurred", { position: "top-center", autoClose: 3000 });
+    } finally {
+      setDeletingUserId(null);
     }
   };
 
@@ -110,8 +167,10 @@ const ManagerDashboardScreen = ({ setIsLoggedIn }) => {
   console.log(users)
   const filteredUsers = users?.filter( 
     (user) =>
-      user?.full_name.toLowerCase().includes(search.toLowerCase()) ||
-      user?.email.toLowerCase().includes(search.toLowerCase())
+      user?.role === 'employee' && (
+        user?.full_name.toLowerCase().includes(search.toLowerCase()) ||
+        user?.email.toLowerCase().includes(search.toLowerCase())
+      )
   );
   const exportToExcel = async () => {
     try {
@@ -329,7 +388,6 @@ const ManagerDashboardScreen = ({ setIsLoggedIn }) => {
 
   const downloadAllTimesheetImages = async (token) => {
     try {
-      // Step 1: Get all data
       const exportData = await fetchExportData(token, false);
       if (!exportData || exportData.length === 0) {
         toast.warning("No data available to export", {
@@ -342,8 +400,6 @@ const ManagerDashboardScreen = ({ setIsLoggedIn }) => {
 
       console.log('Starting image export process...');
       console.log('Export data received:', exportData.length, 'records');
-
-      // Step 2: Collect ALL distinct images with user info
       const distinctImages = new Map();
       
       exportData.forEach((record, index) => {
@@ -355,11 +411,7 @@ const ManagerDashboardScreen = ({ setIsLoggedIn }) => {
         });
 
         if (!record.image_path || !record.name) return;
-
-        // Get week info
         const weekInfo = getWeekInfo(record.date_worked);
-        
-        // Handle both single image and array of images
         let imagePaths = [];
         if (Array.isArray(record.image_path)) {
           imagePaths = record.image_path.filter(path => path && path.trim());
@@ -370,8 +422,6 @@ const ManagerDashboardScreen = ({ setIsLoggedIn }) => {
         imagePaths.forEach(imagePath => {
           const cleanPath = imagePath.trim();
           if (!cleanPath) return;
-
-          // Create unique key for this image
           if (!distinctImages.has(cleanPath)) {
             distinctImages.set(cleanPath, {
               url: cleanPath,
@@ -395,8 +445,6 @@ const ManagerDashboardScreen = ({ setIsLoggedIn }) => {
         setTimesheetExporting(false);
         return;
       }
-
-      // Step 3: Download all images silently
       const zip = new JSZip();
       const imageArray = Array.from(distinctImages.values());
       let successCount = 0;
@@ -409,8 +457,6 @@ const ManagerDashboardScreen = ({ setIsLoggedIn }) => {
           console.log(`Downloading ${i + 1}/${imageArray.length}: ${imageInfo.url}`);
 
           const blob = await downloadSingleImage(imageInfo.url, token);
-          
-          // Generate filename
           const filename = generateFilename(imageInfo, i + 1);
           
           zip.file(filename, blob);
@@ -742,12 +788,31 @@ const ManagerDashboardScreen = ({ setIsLoggedIn }) => {
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-center text-sm font-medium">
-                        <button
-                          onClick={() => navigate(`/user/${user._id}`)}
-                          className="text-blue-600 hover:text-blue-900"
-                        >
-                          View Details
-                        </button>
+                        <div className="flex items-center justify-center gap-4">
+                          <button
+                            onClick={() => navigate(`/user/${user._id}`)}
+                            className="text-blue-600 hover:text-blue-900"
+                          >
+                            View Details
+                          </button>
+                          {user.role === 'employee' && (
+                            <button
+                              title="Delete user"
+                              onClick={() => confirmAndDeleteUser(user)}
+                              disabled={deletingUserId === user._id}
+                              className={`${deletingUserId === user._id ? 'opacity-50 cursor-not-allowed' : 'hover:text-red-700'} text-red-600`}
+                            >
+                              <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                className="h-5 w-5"
+                                viewBox="0 0 20 20"
+                                fill="currentColor"
+                              >
+                                <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 100 2h.293l.853 10.243A2 2 0 007.138 18h5.724a2 2 0 001.992-1.757L15.707 6H16a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zm-1 6a1 1 0 112 0v7a1 1 0 11-2 0V8zm4 0a1 1 0 112 0v7a1 1 0 11-2 0V8z" clipRule="evenodd" />
+                              </svg>
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}
